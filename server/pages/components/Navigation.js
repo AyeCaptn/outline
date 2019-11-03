@@ -8,11 +8,7 @@ import OutlineLogo from '../../../shared/components/OutlineLogo';
 import TeamLogo from '../../../shared/components/TeamLogo';
 import { fadeAndScaleIn } from '../../../shared/styles/animations';
 import {
-  developers,
-  changelog,
-  pricing,
   about,
-  integrations,
   privacy,
   githubUrl,
   twitterUrl,
@@ -42,20 +38,6 @@ function TopNavigation({ sessions, loggedIn }: Props) {
         <OutlineLogo size={18} fill="#000" />&nbsp;Outline
       </Brand>
       <Menu>
-        <MenuItemDesktop>
-          <a href={integrations()}>Integrations</a>
-        </MenuItemDesktop>
-        {process.env.DEPLOYMENT === 'hosted' && (
-          <MenuItem>
-            <a href={pricing()}>Pricing</a>
-          </MenuItem>
-        )}
-        <MenuItemDesktop>
-          <a href={changelog()}>Changelog</a>
-        </MenuItemDesktop>
-        <MenuItemDesktop>
-          <a href={developers()}>API</a>
-        </MenuItemDesktop>
         {loggedIn ? (
           <React.Fragment>
             {process.env.SUBDOMAINS_ENABLED === 'true' &&
