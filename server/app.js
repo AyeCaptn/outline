@@ -75,12 +75,16 @@ if (process.env.NODE_ENV === 'development') {
 
   app.use(mount('/emails', emails));
 } else if (process.env.NODE_ENV === 'production') {
-  // Force HTTPS on all pages
-  app.use(
-    enforceHttps({
-      trustProtoHeader: true,
-    })
-  );
+  // Force redirect to HTTPS protocol unless explicitly disabled
+  if (process.env.FORCE_HTTPS !== 'false') {
+    app.use(
+      enforceHttps({
+        trustProtoHeader: true,
+      })
+    );
+  } else {
+    console.warn('Enforced https was disabled with FORCE_HTTPS env variable');
+  }
 
   // trust header fields set by our proxy. eg X-Forwarded-For
   app.proxy = true;
@@ -122,6 +126,11 @@ app.use(
       styleSrc: ["'self'", "'unsafe-inline'", 'github.githubassets.com'],
       imgSrc: ['*', 'data:', 'blob:'],
       frameSrc: ['*'],
+      connectSrc: [
+        "'self'",
+        process.env.AWS_S3_UPLOAD_BUCKET_URL,
+        'www.google-analytics.com',
+      ],
     },
   })
 );

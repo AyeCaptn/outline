@@ -23,11 +23,11 @@ function Home(props: Props) {
       </Helmet>
       <Grid>
         <Hero id="signin">
+          <AuthErrors notice={props.notice} />
           <h1>CloudBuilder knowledge base</h1>
           <p>
             <SigninButtons {...props} />
           </p>
-          <AuthErrors notice={props.notice} />
         </Hero>
       </Grid>
     </span>

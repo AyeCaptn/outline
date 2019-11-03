@@ -23,7 +23,7 @@ import Header from './components/Header';
 import DocumentMove from './components/DocumentMove';
 import Branding from './components/Branding';
 import KeyboardShortcuts from './components/KeyboardShortcuts';
-import Backlinks from './components/Backlinks';
+import References from './components/References';
 import ErrorBoundary from 'components/ErrorBoundary';
 import LoadingPlaceholder from 'components/LoadingPlaceholder';
 import LoadingIndicator from 'components/LoadingIndicator';
@@ -37,6 +37,7 @@ import ErrorOffline from 'scenes/ErrorOffline';
 import UiStore from 'stores/UiStore';
 import AuthStore from 'stores/AuthStore';
 import DocumentsStore from 'stores/DocumentsStore';
+import PoliciesStore from 'stores/PoliciesStore';
 import RevisionsStore from 'stores/RevisionsStore';
 import Document from 'models/Document';
 import Revision from 'models/Revision';
@@ -60,9 +61,9 @@ type Props = {
   match: Object,
   history: RouterHistory,
   location: Location,
+  policies: PoliciesStore,
   documents: DocumentsStore,
   revisions: RevisionsStore,
-  newDocument?: boolean,
   auth: AuthStore,
   ui: UiStore,
 };
@@ -75,7 +76,6 @@ class DocumentScene extends React.Component<Props> {
   @observable editorComponent = EditorImport;
   @observable document: ?Document;
   @observable revision: ?Revision;
-  @observable newDocument: ?Document;
   @observable isUploading: boolean = false;
   @observable isSaving: boolean = false;
   @observable isPublishing: boolean = false;
@@ -91,6 +91,16 @@ class DocumentScene extends React.Component<Props> {
     this.loadEditor();
   }
 
+  componentDidUpdate() {
+    if (this.document) {
+      const policy = this.props.policies.get(this.document.id);
+
+      if (!policy) {
+        this.loadDocument(this.props);
+      }
+    }
+  }
+
   componentWillUnmount() {
     clearTimeout(this.viewTimeout);
   }
@@ -102,18 +112,26 @@ class DocumentScene extends React.Component<Props> {
   @keydown('m')
   goToMove(ev) {
     ev.preventDefault();
+    const document = this.document;
+    if (!document) return;
 
-    if (this.document && !this.document.isArchived && !this.document.isDraft) {
-      this.props.history.push(documentMoveUrl(this.document));
+    const can = this.props.policies.abilities(document.id);
+
+    if (can.update) {
+      this.props.history.push(documentMoveUrl(document));
     }
   }
 
   @keydown('e')
   goToEdit(ev) {
     ev.preventDefault();
+    const document = this.document;
+    if (!document) return;
 
-    if (this.document && !this.document.isArchived) {
-      this.props.history.push(documentEditUrl(this.document));
+    const can = this.props.policies.abilities(document.id);
+
+    if (can.update) {
+      this.props.history.push(documentEditUrl(document));
     }
   }
 
@@ -137,68 +155,59 @@ class DocumentScene extends React.Component<Props> {
     }
   }
 
+  @keydown('meta+shift+p')
+  onPublish(ev) {
+    ev.preventDefault();
+    if (!this.document) return;
+    if (this.document.publishedAt) return;
+    this.onSave({ publish: true, done: true });
+  }
+
   loadDocument = async props => {
-    if (props.newDocument) {
-      this.document = new Document(
-        {
-          collectionId: props.match.params.id,
-          parentDocumentId: new URLSearchParams(props.location.search).get(
-            'parentDocumentId'
-          ),
-          title: '',
-          text: '',
-        },
-        props.documents
+    const { shareId, revisionId } = props.match.params;
+
+    try {
+      this.document = await props.documents.fetch(
+        props.match.params.documentSlug,
+        { shareId }
       );
-    } else {
-      const { shareId, revisionId } = props.match.params;
 
-      try {
-        this.document = await props.documents.fetch(
+      if (revisionId) {
+        this.revision = await props.revisions.fetch(
           props.match.params.documentSlug,
-          { shareId }
+          { revisionId }
         );
+      } else {
+        this.revision = undefined;
+      }
+    } catch (err) {
+      this.error = err;
+      return;
+    }
 
-        if (revisionId) {
-          this.revision = await props.revisions.fetch(
-            props.match.params.documentSlug,
-            { revisionId }
-          );
-        } else {
-          this.revision = undefined;
-        }
-      } catch (err) {
-        this.error = err;
-        return;
+    this.isDirty = false;
+    this.isEmpty = false;
+
+    const document = this.document;
+
+    if (document) {
+      this.props.ui.setActiveDocument(document);
+
+      if (document.isArchived && this.isEditing) {
+        return this.goToDocumentCanonical();
       }
 
-      this.isDirty = false;
-      this.isEmpty = false;
-
-      const document = this.document;
-
-      if (document) {
-        this.props.ui.setActiveDocument(document);
-
-        if (document.isArchived && this.isEditing) {
-          return this.goToDocumentCanonical();
+      if (this.props.auth.user && !shareId) {
+        if (!this.isEditing && document.publishedAt) {
+          this.viewTimeout = setTimeout(document.view, MARK_AS_VIEWED_AFTER);
         }
 
-        if (this.props.auth.user && !shareId) {
-          if (!this.isEditing && document.publishedAt) {
-            this.viewTimeout = setTimeout(document.view, MARK_AS_VIEWED_AFTER);
-          }
-
-          const isMove = props.location.pathname.match(/move$/);
-          const canRedirect = !this.revision && !isMove;
-          if (canRedirect) {
-            const canonicalUrl = updateDocumentUrl(
-              props.match.url,
-              document.url
-            );
-            if (props.location.pathname !== canonicalUrl) {
-              props.history.replace(canonicalUrl);
-            }
+        const isMove = props.location.pathname.match(/move$/);
+        const canRedirect = !this.revision && !isMove;
+        if (canRedirect) {
+          const canonicalUrl = updateDocumentUrl(props.match.url, document.url);
+          if (props.location.pathname !== canonicalUrl) {
+            props.history.replace(canonicalUrl);
           }
         }
       }
@@ -327,13 +336,16 @@ class DocumentScene extends React.Component<Props> {
             title={location.state ? location.state.title : 'Untitled'}
           />
           <CenteredContent>
-            <LoadingState />
+            <LoadingPlaceholder />
           </CenteredContent>
         </Container>
       );
     }
 
     const embedsDisabled = team && !team.documentEmbeds;
+
+    // this line is only here to make MobX understand that policies are a dependency of this component
+    this.props.policies.abilities(document.id);
 
     return (
       <ErrorBoundary>
@@ -374,6 +386,7 @@ class DocumentScene extends React.Component<Props> {
             {!isShare && (
               <Header
                 document={document}
+                isRevision={!!revision}
                 isDraft={document.isDraft}
                 isEditing={this.isEditing}
                 isSaving={this.isSaving}
@@ -404,6 +417,7 @@ class DocumentScene extends React.Component<Props> {
                 onSearchLink={this.onSearchLink}
                 onChange={this.onChange}
                 onSave={this.onSave}
+                onPublish={this.onPublish}
                 onCancel={this.onDiscard}
                 readOnly={!this.isEditing || document.isArchived}
                 toc={!revision}
@@ -411,12 +425,7 @@ class DocumentScene extends React.Component<Props> {
                 schema={schema}
               />
               {!this.isEditing &&
-                !isShare && (
-                  <Backlinks
-                    documents={this.props.documents}
-                    document={document}
-                  />
-                )}
+                !isShare && <References document={document} />}
             </MaxWidth>
           </Container>
         </Container>
@@ -446,10 +455,6 @@ const Container = styled(Flex)`
   margin-top: ${props => (props.isShare ? '50px' : '0')};
 `;
 
-const LoadingState = styled(LoadingPlaceholder)`
-  margin: 40px 0;
-`;
-
 export default withRouter(
-  inject('ui', 'auth', 'documents', 'revisions')(DocumentScene)
+  inject('ui', 'auth', 'documents', 'policies', 'revisions')(DocumentScene)
 );
