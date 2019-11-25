@@ -3,7 +3,6 @@ import * as React from 'react';
 import { Helmet } from 'react-helmet';
 import styled from 'styled-components';
 import breakpoint from 'styled-components-breakpoint';
-import { TopNavigation } from './Navigation';
 import Analytics from './Analytics';
 import GlobalStyles from '../../../shared/styles/globals';
 import prefetchTags from '../../utils/prefetchTags';
@@ -66,10 +65,7 @@ function Layout({ children, loggedIn, sessions }: Props) {
         {'{{HEAD}}'}
         {'{{CSS}}'}
       </head>
-      <Body>
-        <TopNavigation sessions={sessions} loggedIn={loggedIn} />
-        {children}
-      </Body>
+      <Body>{children}</Body>
     </html>
   );
 }
