@@ -27,9 +27,7 @@ function Home(props: Props) {
           <p>
             <SigninButtons {...props} />
           </p>
-          <p>
-            <a href={githubUrl()}>Powered by Outline</a>
-          </p>
+          <p>Powered by Outline</p>
         </Hero>
       </Grid>
     </span>
